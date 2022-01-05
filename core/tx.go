@@ -37,12 +37,10 @@ func (tx *Tx) ExecContext(ctx context.Context, query string, args ...interface{}
 	return res, err
 }
 
-// Query query with args
 func (tx *Tx) Query(query string, args ...interface{}) (*Rows, error) {
 	return tx.QueryContext(tx.ctx, query, args...)
 }
 
-// QueryContext query with args
 func (tx *Tx) QueryContext(ctx context.Context, query string, args ...interface{}) (*Rows, error) {
 	rows, err := tx.Tx.QueryContext(ctx, query, args...)
 	return &Rows{rows, tx.db}, err
