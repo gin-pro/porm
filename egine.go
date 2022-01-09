@@ -61,15 +61,17 @@ func (e *Engine) Find(bean interface{}) (bool, error) {
 	return session.Find(bean)
 }
 
-//
-//func (e *Engine) Insert() *Session {
-//
-//}
-//
-//func (e *Engine) Update() *Session {
-//
-//}
-//
-//func (e *Engine) Delete() *Session {
-//
-//}
+func (e *Engine) Insert(bean interface{}) (int64, error) {
+	session := e.NewSession()
+	return session.Insert(bean)
+}
+
+func (e *Engine) Update(bean interface{}) (int64, error) {
+	session := e.NewSession()
+	return session.Update(bean)
+}
+
+func (e *Engine) Delete(bean interface{}) (int64, error) {
+	session := e.NewSession()
+	return session.Delete(bean)
+}

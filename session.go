@@ -56,7 +56,7 @@ func (session *Session) get(bean interface{}) (bool, error) {
 		return false, errors.New("bean is nil")
 	}
 
-	rows, err := session.queryRows()
+	rows, err := session.queryRows(bean)
 	if err != nil {
 		return false, err
 	}
@@ -87,7 +87,7 @@ func (session *Session) find(bean interface{}) (bool, error) {
 		return false, errors.New("bean is nil")
 	}
 
-	rows, err := session.queryRows()
+	rows, err := session.queryRows(bean)
 	if err != nil {
 		return false, err
 	}
@@ -95,16 +95,27 @@ func (session *Session) find(bean interface{}) (bool, error) {
 	return session.getSlice(rows, bean)
 }
 
-func (session *Session) queryRows() (*core.Rows, error) {
-	builer := strings.Builder{}
-	builer.WriteString("SELECT * FROM ")
-	builer.WriteString("`" + session.statement.TableName + "` ")
-	if len(session.statement.QueryStr) > 0 {
-		builer.WriteString("WHERE ")
-		builer.WriteString(session.statement.QueryStr)
+func (session *Session) queryRows(bean interface{}) (*core.Rows, error) {
+	session.statement.QueryStructToField(bean)
+
+	builder := strings.Builder{}
+	builder.WriteString("SELECT ")
+	field := ""
+	for _, f := range session.statement.Fields {
+		field += fmt.Sprintf("`%v`,", f)
 	}
-	builer.WriteString(";")
-	sqls := builer.String()
+	if len(field) > 0 {
+		field = field[0 : len(field)-1]
+	}
+	builder.WriteString(field)
+	builder.WriteString(" FROM ")
+	builder.WriteString("`" + session.statement.TableName + "` ")
+	if len(session.statement.QueryStr) > 0 {
+		builder.WriteString("WHERE ")
+		builder.WriteString(session.statement.QueryStr)
+	}
+	builder.WriteString(";")
+	sqls := builder.String()
 	fmt.Println("Query sql  ", sqls)
 	row, err := session.engine.DB().QueryContext(session.ctx, sqls, session.statement.Args...)
 	if err != nil {
@@ -165,3 +176,142 @@ func (session *Session) getMap(rows *core.Rows, bean interface{}) (bool, error) 
 	}
 	return true, nil
 }
+
+func (session *Session) Insert(bean ...interface{}) (int64, error) {
+	defer session.resetStatement()
+
+	if session.statement.LastError != nil {
+		return 0, session.statement.LastError
+	}
+	return session.insert(bean...)
+}
+
+func (session *Session) insert(bean ...interface{}) (int64, error) {
+	sqls := []string{}
+	args := []interface{}{}
+	for _, b := range bean {
+		session.statement.StructToField(b)
+		builder := strings.Builder{}
+		builder.WriteString("INSERT INTO ")
+		builder.WriteString("`" + session.statement.TableName + "` ")
+
+		field := "("
+		for _, f := range session.statement.Fields {
+			field += fmt.Sprintf("`%v`,", f)
+		}
+		if len(field) > 0 {
+			field = field[0 : len(field)-1]
+		}
+		builder.WriteString(field + ")")
+
+		builder.WriteString("VALUES ( ")
+		vs := ""
+		for _, f := range session.statement.Field {
+			vs += "?,"
+			args = append(args, session.statement.GetValueByFieldWithOutID(b, fmt.Sprintf("%v", f)))
+		}
+		if len(vs) > 0 {
+			vs = vs[0 : len(vs)-1]
+		}
+		builder.WriteString(vs)
+		builder.WriteString(") ")
+		builder.WriteString(";")
+		sqls = append(sqls, builder.String())
+	}
+	join := strings.Join(sqls, "\n")
+	fmt.Println("insert sql  ", join)
+	fmt.Println("insert args  ", args)
+	res, err := session.engine.DB().Exec(join, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+func (session *Session) Update(bean interface{}) (int64, error) {
+	defer session.resetStatement()
+
+	if session.statement.LastError != nil {
+		return 0, session.statement.LastError
+	}
+	return session.update(bean)
+}
+
+func (session *Session) update(bean interface{}) (int64, error) {
+	args := []interface{}{}
+	session.statement.StructToField(bean)
+	builder := strings.Builder{}
+	builder.WriteString("UPDATE ")
+	builder.WriteString("`" + session.statement.TableName + "` ")
+	builder.WriteString("SET ")
+	field := ""
+	for i, f := range session.statement.Fields {
+		args = append(args, session.statement.GetValueByField(bean, fmt.Sprintf("%v", session.statement.Field[i])))
+		field += fmt.Sprintf("`%v` = ?,", f)
+	}
+	if len(field) > 0 {
+		field = field[0 : len(field)-1]
+	}
+	builder.WriteString(field)
+	if len(session.statement.QueryStr) > 0 {
+		builder.WriteString(" WHERE ")
+		builder.WriteString(session.statement.QueryStr)
+	}
+	builder.WriteString(";")
+	sqls := builder.String()
+	args = append(args, session.statement.Args...)
+	fmt.Println("update sql  ", sqls)
+	fmt.Println("update args  ", args)
+	res, err := session.engine.DB().Exec(sqls, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+func (session *Session) Delete(bean interface{}) (int64, error) {
+	defer session.resetStatement()
+
+	if session.statement.LastError != nil {
+		return 0, session.statement.LastError
+	}
+	return session.delete(bean)
+}
+func (session *Session) delete(bean interface{}) (int64, error) {
+	args := []interface{}{}
+	session.statement.StructToField(bean)
+	builder := strings.Builder{}
+	builder.WriteString("DELETE FROM ")
+	builder.WriteString("`" + session.statement.TableName + "` ")
+	builder.WriteString("WHERE ")
+	field := ""
+	for i, f := range session.statement.Fields {
+		args = append(args, session.statement.GetValueByField(bean, fmt.Sprintf("%v", session.statement.Field[i])))
+		field += fmt.Sprintf("`%v` = ? and", f)
+	}
+	if len(session.statement.QueryStr) > 0 {
+		field += " " + session.statement.QueryStr
+	} else {
+		if len(field) > 0 {
+			field = field[0 : len(field)-3]
+		}
+	}
+	builder.WriteString(field)
+	builder.WriteString(";")
+	sqls := builder.String()
+	args = append(args, session.statement.Args...)
+	fmt.Println("Delete sql  ", sqls)
+	fmt.Println("Delete args  ", args)
+	res, err := session.engine.DB().Exec(sqls, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+
+}
+
+//func (session *Session) Select(fields ...interface{}) *Session {
+//	session.statement.Fields = fields
+//	session.statement.IsSelect = true
+//	return session
+//}

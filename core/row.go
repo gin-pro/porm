@@ -64,6 +64,11 @@ func (rs *Rows) ScanStructByIndex(dest ...interface{}) error {
 	var j = 0
 	for _, vvs := range vvvs {
 		for i := 0; i < vvs.NumField(); i++ {
+			tag := vvs.Type().Field(i).Tag
+			t := tag.Get("porm")
+			if t == "" || t == "-" {
+				continue
+			}
 			newDest[j] = vvs.Field(i).Addr().Interface()
 			j = j + 1
 		}
@@ -112,7 +117,7 @@ func (row *Row) Scan(dest ...interface{}) error {
 		return sql.ErrNoRows
 	}
 
-	err := row.rows.Scan(dest...)
+	err := row.rows.ScanStructByIndex(dest...)
 	if err != nil {
 		return err
 	}

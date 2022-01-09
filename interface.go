@@ -6,3 +6,7 @@ type Interface interface {
 	Update(bean interface{}, condiBeans ...interface{}) (int64, error)
 	Where(interface{}, ...interface{}) *Session
 }
+
+type Table interface {
+	TableName() string
+}
